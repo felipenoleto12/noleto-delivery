@@ -1,0 +1,316 @@
+<!DOCTYPE html> 
+<html lang="pt-br"> 
+<head> 
+    <meta charset="UTF-8"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Noleto Delivery - FN (Progressão Contínua)</title> 
+    <style> 
+        body { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            background-color: #1a1a1a; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
+        } 
+        canvas { 
+            border: 4px solid #333; 
+            background-color: #f0f0f0; 
+            max-width: 100%; 
+            max-height: 100%;
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+        } 
+    </style> 
+</head> 
+<body> 
+ 
+    <canvas id="gameCanvas" width="400" height="400"></canvas> 
+ 
+    <script> 
+        const canvas = document.getElementById("gameCanvas"); 
+        const ctx = canvas.getContext("2d"); 
+ 
+        // Variáveis Globais
+        let frames = 0;
+        let gameOver = false;
+        let baseSpeed = 3; 
+        let gameSpeed = baseSpeed;
+        let bgOffset = 0;
+        let score = 0;
+        let distance = 0; 
+        let nextSpawnDistance = 70; 
+        let lastSpawnDistance = 0;
+        let startTime = Date.now();
+        let recordDistance = localStorage.getItem("motoboyRecord") || 0;
+        
+        const obstacles = [];
+        const coins = [];
+        const nysChips = [];
+        
+        const lanes = [305, 335, 365];
+        const obstacleTypes = ["🚗", "🚚", "🚌", "🏍️", "🚲", "🛑"];
+
+        class Obstacle {
+            constructor(laneY) {
+                this.type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+                this.size = 40;
+                this.x = canvas.width;
+                this.y = laneY;
+                this.speed = gameSpeed;
+            }
+            update() { this.x -= this.speed; }
+            draw() {
+                ctx.save();
+                ctx.font = `${this.size}px Arial`;
+                ctx.textBaseline = "top";
+                if (this.type !== "🛑" && this.type !== "🚲" && this.type !== "🏍️") {
+                    ctx.scale(-1, 1);
+                    ctx.fillText(this.type, -this.x - this.size, this.y);
+                } else {
+                    ctx.fillText(this.type, this.x, this.y);
+                }
+                ctx.restore();
+            }
+        }
+
+        class Coin {
+            constructor(laneY) {
+                this.size = 25;
+                this.x = canvas.width;
+                this.y = laneY + (40 - this.size) / 2;
+                this.speed = gameSpeed;
+            }
+            update() { this.x -= this.speed; }
+            draw() {
+                ctx.font = `${this.size}px Arial`;
+                ctx.textBaseline = "top";
+                ctx.fillText("🪙", this.x, this.y);
+            }
+        }
+
+        class NysChip {
+            constructor(laneY) {
+                this.size = 30;
+                this.x = canvas.width;
+                this.y = laneY + (40 - this.size) / 2;
+                this.speed = gameSpeed;
+            }
+            update() { this.x -= this.speed; }
+            draw() {
+                ctx.font = `${this.size}px Arial`;
+                ctx.textBaseline = "top";
+                ctx.fillText("🤖", this.x, this.y);
+            }
+        }
+
+        const player = { 
+            x: 50, 
+            y: lanes[1],
+            currentLane: 1,
+            size: 40, 
+            speed: 5, 
+            emoji: "🛵",
+            isInvincible: false,
+            invincibleTimer: 0
+        }; 
+ 
+        const keys = {}; 
+        window.addEventListener("keydown", e => keys[e.key] = true); 
+        window.addEventListener("keyup", e => keys[e.key] = false); 
+
+        canvas.addEventListener("touchstart", e => {
+            if (gameOver) return;
+            e.preventDefault();
+            const touchX = e.touches[0].clientX - canvas.getBoundingClientRect().left;
+            const canvasVisualWidth = canvas.getBoundingClientRect().width;
+
+            if (touchX < canvasVisualWidth / 2) {
+                if (player.currentLane > 0) {
+                    player.currentLane--;
+                    player.y = lanes[player.currentLane];
+                }
+            } else {
+                if (player.currentLane < lanes.length - 1) {
+                    player.currentLane++;
+                    player.y = lanes[player.currentLane];
+                }
+            }
+        });
+ 
+        function drawBackground() {
+            let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height - 100);
+            gradient.addColorStop(0, "#87CEEB");
+            gradient.addColorStop(1, "#f0f8ff");
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height - 100);
+            ctx.fillStyle = "#FFD700";
+            ctx.beginPath(); ctx.arc(320, 80, 40, 0, Math.PI * 2); ctx.fill();
+            
+            ctx.fillStyle = "#666"; 
+            ctx.fillRect(20, 150, 60, 150); ctx.fillRect(90, 100, 80, 200);
+            ctx.fillRect(180, 120, 70, 180); ctx.fillRect(260, 80, 90, 220);
+
+            ctx.fillStyle = "#333"; ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+            ctx.fillStyle = "#FFFFFF"; ctx.setLineDash([20, 15]); ctx.lineDashOffset = -bgOffset;
+            ctx.beginPath(); ctx.moveTo(0, canvas.height - 50); ctx.lineTo(canvas.width, canvas.height - 50);
+            ctx.lineWidth = 4; ctx.strokeStyle = "#FFFFFF"; ctx.stroke();
+            ctx.setLineDash([]); ctx.lineDashOffset = 0;
+        }
+
+        function update() { 
+            if (gameOver) return;
+            
+            // DIFICULDADE SOBE A CADA 0.01 KM (10 metros)
+            let level = Math.floor(distance / 10); 
+            gameSpeed = baseSpeed + (level * 0.05); 
+            
+            bgOffset += gameSpeed;
+            distance += gameSpeed * 0.1;
+            if (bgOffset >= 35) bgOffset = 0;
+            frames++;
+
+            if (player.isInvincible) {
+                player.invincibleTimer--;
+                if (player.invincibleTimer <= 0) player.isInvincible = false;
+            }
+
+            // SPAWN ADAPTATIVO
+            if (distance - lastSpawnDistance > nextSpawnDistance) {
+                lastSpawnDistance = distance;
+                nextSpawnDistance = Math.max(25, 70 - (level * 0.2)); 
+                
+                let availableLanes = [0, 1, 2];
+                let doubleChance = Math.min(0.8, 0.4 + (level * 0.01)); 
+                const spawnDouble = (Math.random() < doubleChance);
+                const numObstacles = spawnDouble ? 2 : 1;
+
+                for(let i = 0; i < numObstacles; i++) {
+                    if(availableLanes.length > 0) {
+                        let laneIndex = availableLanes.splice(Math.floor(Math.random() * availableLanes.length), 1)[0];
+                        obstacles.push(new Obstacle(lanes[laneIndex]));
+                    }
+                }
+
+                if (availableLanes.length > 0 && Math.random() < 0.2) {
+                    let coinLane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+                    coins.push(new Coin(lanes[coinLane]));
+                }
+                else if (availableLanes.length > 0 && Math.random() < 0.04) {
+                    let chipLane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+                    nysChips.push(new NysChip(lanes[chipLane]));
+                }
+            }
+
+            // Atualiza Moedas
+            for (let i = 0; i < coins.length; i++) {
+                let coin = coins[i]; coin.update();
+                if (player.x < coin.x + coin.size && player.x + player.size - 10 > coin.x &&
+                    player.y < coin.y + coin.size && player.y + player.size - 10 > coin.y) {
+                    score += 1; coins.splice(i, 1); i--; continue;
+                }
+                if (coin.x + coin.size < 0) { coins.splice(i, 1); i--; }
+            }
+
+            // Atualiza Chips Nys
+            for (let i = 0; i < nysChips.length; i++) {
+                let chip = nysChips[i]; chip.update();
+                if (player.x < chip.x + chip.size && player.x + player.size - 10 > chip.x &&
+                    player.y < chip.y + chip.size && player.y + player.size - 10 > chip.y) {
+                    player.isInvincible = true;
+                    player.invincibleTimer = 300; 
+                    nysChips.splice(i, 1); i--; continue;
+                }
+                if (chip.x + chip.size < 0) { nysChips.splice(i, 1); i--; }
+            }
+
+            // Atualiza Obstáculos
+            for (let i = 0; i < obstacles.length; i++) {
+                let obs = obstacles[i]; obs.update();
+                if (player.x < obs.x + obs.size - 12 && player.x + player.size - 12 > obs.x &&
+                    player.y < obs.y + obs.size - 12 && player.y + player.size - 12 > obs.y) {
+                    if (!player.isInvincible) {
+                        gameOver = true;
+                        if (distance > recordDistance) {
+                            localStorage.setItem("motoboyRecord", Math.floor(distance));
+                            recordDistance = Math.floor(distance);
+                        }
+                    } else {
+                        obstacles.splice(i, 1); i--;
+                    }
+                }
+                if (obs.x + obs.size < 0) { obstacles.splice(i, 1); i--; }
+            }
+
+            // Controles PC
+            if (keys["ArrowUp"] && player.currentLane > 0) {
+                player.currentLane--; player.y = lanes[player.currentLane]; keys["ArrowUp"] = false;
+            } 
+            if (keys["ArrowDown"] && player.currentLane < lanes.length - 1) {
+                player.currentLane++; player.y = lanes[player.currentLane]; keys["ArrowDown"] = false;
+            } 
+            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed; 
+            if (keys["ArrowRight"] && player.x < canvas.width - player.size) player.x += player.speed; 
+        } 
+ 
+        function draw() { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            drawBackground();
+            coins.forEach(coin => coin.draw());
+            nysChips.forEach(chip => chip.draw());
+            obstacles.forEach(obs => obs.draw());
+
+            if (player.isInvincible) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(player.x + player.size/2 - 5, player.y + player.size/2, player.size/1.2, 0, Math.PI*2);
+                ctx.fillStyle = "rgba(0, 255, 255, 0.3)"; 
+                ctx.fill();
+                ctx.strokeStyle = "cyan"; 
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = "cyan";
+                ctx.fillRect(player.x - 5, player.y - 15, (player.invincibleTimer / 300) * (player.size + 10), 6);
+                ctx.restore();
+            }
+
+            ctx.save();
+            ctx.font = `${player.size}px Arial`; 
+            ctx.textBaseline = "top";
+            ctx.scale(-1, 1);
+            ctx.fillText(player.emoji, -player.x - player.size, player.y); 
+            ctx.restore();
+
+            ctx.fillStyle = "black"; ctx.font = "bold 20px Arial"; ctx.textAlign = "left";
+            ctx.fillText(`🪙 Moedas: ${score}`, 10, 25);
+            
+            let currentTime = Date.now();
+            if (gameOver) currentTime = startTime + (frames * 16.666);
+            let timeElapsed = Math.floor((currentTime - startTime) / 1000);
+            let min = Math.floor(timeElapsed / 60).toString().padStart(2, '0');
+            let sec = (timeElapsed % 60).toString().padStart(2, '0');
+            let currentKm = (distance / 1000).toFixed(2);
+            let recordKm = (recordDistance / 1000).toFixed(2);
+            
+            ctx.textAlign = "right"; ctx.font = "16px Arial";
+            ctx.fillText(`⏱️ Tempo: ${min}:${sec}`, canvas.width - 10, 20);
+            ctx.fillText(`🏁 Distância: ${currentKm} km`, canvas.width - 10, 40);
+            ctx.fillStyle = "#d00";
+            ctx.fillText(`🏆 Recorde: ${recordKm} km`, canvas.width - 10, 60);
+
+            if (gameOver) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "white"; ctx.font = "bold 40px Arial"; ctx.textAlign = "center";
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = "20px Arial";
+                ctx.fillText("Toque ou F5 para tentar de novo", canvas.width / 2, canvas.height / 2 + 30);
+            }
+        } 
+ 
+        function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); } 
+        gameLoop(); 
+        canvas.addEventListener("touchstart", () => { if (gameOver) document.location.reload(); });
+    </script> 
+</body> 
+</html>

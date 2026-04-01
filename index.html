@@ -24,8 +24,11 @@
             audioStarted = true;
             engineOsc = audioCtx.createOscillator();
             engineGain = audioCtx.createGain();
-            engineOsc.type = 'sawtooth';
-            engineGain.gain.value = 0.04;
+            
+            // --- ALTERAÇÃO 1: SOM DO MOTOR MAIS SUAVE ---
+            engineOsc.type = 'triangle'; // Mudado de 'sawtooth' para 'triangle' (onda muito mais suave)
+            engineGain.gain.value = 0.02; // Reduzi o volume de 0.04 para 0.02
+            
             engineOsc.connect(engineGain);
             engineGain.connect(audioCtx.destination);
             engineOsc.start();
@@ -98,7 +101,8 @@
             bgOffset += gameSpeed; distance += gameSpeed * 0.1;
             if (bgOffset >= 35) bgOffset = 0; frames++;
 
-            if (engineOsc) engineOsc.frequency.setTargetAtTime(40 + (gameSpeed * 5), audioCtx.currentTime, 0.1);
+            // Ajuste da frequência do motor para acompanhar a suavidade
+            if (engineOsc) engineOsc.frequency.setTargetAtTime(30 + (gameSpeed * 4), audioCtx.currentTime, 0.1);
             if (player.isInvincible) { player.invincibleTimer--; if (player.invincibleTimer <= 0) player.isInvincible = false; }
 
             if (distance - lastSpawnDistance > nextSpawnDistance) {
@@ -108,7 +112,6 @@
                 let double = (Math.random() < Math.min(0.8, 0.4 + (level * 0.01)));
                 for(let i = 0; i < (double ? 2 : 1); i++) { if(avail.length > 0) obstacles.push(new Obstacle(lanes[avail.splice(Math.floor(Math.random() * avail.length), 1)[0]])); }
                 
-                // CHANCE DE MOEDAS AUMENTADA (50%)
                 if (avail.length > 0 && Math.random() < 0.5) {
                     let numCoins = (avail.length > 1 && Math.random() < 0.3) ? 2 : 1;
                     for(let j = 0; j < numCoins; j++) { coins.push(new Coin(lanes[avail.splice(Math.floor(Math.random() * avail.length), 1)[0]])); }
@@ -156,7 +159,22 @@
             let min = Math.floor(timeElapsed / 60).toString().padStart(2, '0'), sec = (timeElapsed % 60).toString().padStart(2, '0');
             ctx.textAlign = "right"; ctx.font = "16px Arial"; ctx.fillText(`⏱️ Tempo: ${min}:${sec}`, canvas.width - 10, 20); ctx.fillText(`🏁 Distância: ${(distance / 1000).toFixed(2)} km`, canvas.width - 10, 40);
             ctx.fillStyle = "#d00"; ctx.fillText(`🏆 Recorde: ${(recordDistance / 1000).toFixed(2)} km`, canvas.width - 10, 60);
-            if (gameOver) { ctx.fillStyle = "rgba(0, 0, 0, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "white"; ctx.font = "bold 40px Arial"; ctx.textAlign = "center"; ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20); ctx.font = "20px Arial"; ctx.fillText("Toque ou F5 para reiniciar", canvas.width / 2, canvas.height / 2 + 30); }
+            
+            // --- ALTERAÇÃO 2: MENSAGEM DE GAME OVER LIMPA ---
+            if (gameOver) { 
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)"; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height); 
+                ctx.fillStyle = "white"; 
+                ctx.textAlign = "center"; 
+                
+                // Apenas GAME OVER
+                ctx.font = "bold 40px Arial"; 
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20); 
+                
+                // Apenas Toque na tela
+                ctx.font = "20px Arial"; 
+                ctx.fillText("Toque na tela", canvas.width / 2, canvas.height / 2 + 30); 
+            }
         } 
         function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); } 
         gameLoop(); 

@@ -3,9 +3,9 @@
 <head> 
     <meta charset="UTF-8"> 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Noleto Delivery - FN (Com Buzinas)</title> 
+    <title>Noleto Delivery - FN (Mobile Edition)</title> 
     <style> 
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #1a1a1a; overflow: hidden; font-family: Arial, sans-serif; } 
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #1a1a1a; overflow: hidden; font-family: Arial, sans-serif; touch-action: none; } 
         canvas { border: 4px solid #333; background-color: #f0f0f0; max-width: 100%; max-height: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.7); } 
     </style> 
 </head> 
@@ -42,7 +42,6 @@
             engineOsc.start();
         }
 
-        // Função de Buzina Versátil
         function playHorn(freq, duration, type = 'square', vol = 0.05) {
             if (!audioStarted) return;
             const osc = audioCtx.createOscillator();
@@ -55,9 +54,14 @@
             osc.start(); osc.stop(audioCtx.currentTime + duration);
         }
 
+        // --- LOGICA DE PERSISTÊNCIA (BANCO DE DADOS) ---
+        let gameState = "menu"; // Estados: "menu" ou "playing"
+        let totalCoins = parseInt(localStorage.getItem("noletoTotalCoins")) || 0;
+        let recordDistance = localStorage.getItem("motoboyRecord") || 0;
+
         // Variáveis de Jogo
         let frames = 0, gameOver = false, baseSpeed = 3, gameSpeed = baseSpeed, bgOffset = 0, score = 0, distance = 0; 
-        let nextSpawnDistance = 90, lastSpawnDistance = 0, startTime = Date.now(), recordDistance = localStorage.getItem("motoboyRecord") || 0;
+        let nextSpawnDistance = 90, lastSpawnDistance = 0, startTime = Date.now();
         const obstacles = [], coins = [], lanes = [260, 310, 360]; 
 
         const obstacleTypes = [
@@ -75,7 +79,6 @@
                 this.img = config.img; this.w = config.w; this.h = config.h;
                 this.x = canvas.width; this.y = laneY - (this.h / 2);
                 this.speed = gameSpeed;
-                // Toca a buzina ao nascer
                 config.horn();
             }
             update() { this.x -= this.speed; }
@@ -93,34 +96,70 @@
 
         const player = { x: 50, y: lanes[1], currentLane: 1, w: 50, h: 50, speed: 5 }; 
         const keys = {}; 
-        window.addEventListener("keydown", e => { keys[e.key] = true; startAudio(); }); 
+        window.addEventListener("keydown", e => { keys[e.key] = true; }); 
         window.addEventListener("keyup", e => keys[e.key] = false); 
         
         canvas.addEventListener("touchstart", e => { 
-            if (gameOver) document.location.reload(); 
-            e.preventDefault(); startAudio(); 
+            e.preventDefault();
             const touchX = e.touches[0].clientX - canvas.getBoundingClientRect().left; 
             const visualW = canvas.getBoundingClientRect().width; 
+
+            if (gameState === "menu") {
+                // Inicia o jogo ao tocar em qualquer lugar do menu
+                gameState = "playing";
+                startAudio();
+                return;
+            }
+
+            if (gameOver) {
+                document.location.reload(); 
+                return;
+            }
+
             if (touchX < visualW / 2) { if (player.currentLane > 0) { player.currentLane--; player.y = lanes[player.currentLane]; } } 
             else { if (player.currentLane < lanes.length - 1) { player.currentLane++; player.y = lanes[player.currentLane]; } } 
         });
 
         function drawBackground() {
-            ctx.fillStyle = "#87CEEB"; ctx.fillRect(0, 0, canvas.width, 250); // Céu
-            ctx.fillStyle = "#FFD700"; ctx.beginPath(); ctx.arc(340, 60, 30, 0, Math.PI * 2); ctx.fill(); // Sol
-            
-            // Fundo estático (Prédio FN)
-            ctx.drawImage(imgPredio, 0, 50, canvas.width, 200);
-
-            // Estrada
-            ctx.fillStyle = "#333"; ctx.fillRect(0, 250, canvas.width, 150);
+            ctx.fillStyle = "#87CEEB"; ctx.fillRect(0, 0, canvas.width, 250); 
+            ctx.drawImage(imgPredio, 0, 50, canvas.width, 200); // Fundo FN fixo
+            ctx.fillStyle = "#333"; ctx.fillRect(0, 250, canvas.width, 150); // Estrada
             ctx.fillStyle = "#FFFFFF"; ctx.setLineDash([20, 15]); ctx.lineDashOffset = -bgOffset;
             ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(canvas.width, 300); ctx.moveTo(0, 350); ctx.lineTo(canvas.width, 350);
             ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.stroke(); ctx.setLineDash([]);
         }
 
+        function drawMenu() {
+            // Desenha o fundo e o prédio no menu também
+            drawBackground();
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.font = "bold 32px Arial";
+            ctx.fillText("NOLETO DELIVERY", canvas.width / 2, 100);
+
+            ctx.font = "18px Arial";
+            ctx.fillText(`💰 Total: ${totalCoins} moedas`, canvas.width / 2, 150);
+            ctx.fillText(`🏆 Recorde: ${(recordDistance / 1000).toFixed(2)} km`, canvas.width / 2, 180);
+
+            // Botão Visual
+            ctx.fillStyle = "#FFD700";
+            ctx.roundRect(100, 250, 200, 50, 10);
+            ctx.fill();
+            ctx.fillStyle = "black";
+            ctx.font = "bold 18px Arial";
+            ctx.fillText("INICIAR ENTREGA", canvas.width / 2, 282);
+            
+            ctx.fillStyle = "white";
+            ctx.font = "12px Arial";
+            ctx.fillText("Toque na tela para começar", canvas.width / 2, 330);
+        }
+
         function update() { 
-            if (gameOver) { if (engineGain) engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); return; }
+            if (gameState === "menu" || gameOver) return;
+
             let level = Math.floor(distance / 10); 
             gameSpeed = baseSpeed + (level * 0.05); 
             bgOffset += gameSpeed; distance += gameSpeed * 0.1;
@@ -144,13 +183,13 @@
                 if (Math.random() < 0.5) coins.push(new Coin(lanes[safeLane]));
             }
 
-            // Colisões e Remoção
+            // Colisões e Moedas
             for (let i = 0; i < obstacles.length; i++) {
                 let o = obstacles[i]; o.update();
                 if (player.x + 10 < o.x + o.w - 10 && player.x + player.w - 10 > o.x + 10 && 
                     player.y - 15 < o.y + o.h - 10 && player.y + 15 > o.y + 10) {
-                    gameOver = true; playHorn(100, 0.8, 'sawtooth', 0.2); // Som de batida
-                    if (distance > recordDistance) { localStorage.setItem("motoboyRecord", Math.floor(distance)); recordDistance = Math.floor(distance); }
+                    gameOver = true; playHorn(100, 0.8, 'sawtooth', 0.2);
+                    if (distance > recordDistance) { localStorage.setItem("motoboyRecord", Math.floor(distance)); }
                 }
                 if (o.x + o.w < 0) { obstacles.splice(i, 1); i--; }
             }
@@ -158,34 +197,37 @@
             for (let i = 0; i < coins.length; i++) {
                 let c = coins[i]; c.update();
                 if (player.x < c.x + c.w && player.x + player.w > c.x && player.y - 20 < c.y + c.h && player.y + 20 > c.y) {
-                    score++; playHorn(900, 0.05, 'sine', 0.1); coins.splice(i, 1); i--;
+                    score++; 
+                    totalCoins++;
+                    localStorage.setItem("noletoTotalCoins", totalCoins); // Salva a moeda vitalícia
+                    playHorn(900, 0.05, 'sine', 0.1); 
+                    coins.splice(i, 1); i--;
                 } else if (c.x + c.w < 0) { coins.splice(i, 1); i--; }
             }
-
-            if (keys["ArrowUp"] && player.currentLane > 0) { player.currentLane--; player.y = lanes[player.currentLane]; keys["ArrowUp"] = false; } 
-            if (keys["ArrowDown"] && player.currentLane < lanes.length - 1) { player.currentLane++; player.y = lanes[player.currentLane]; keys["ArrowDown"] = false; } 
-            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed; if (keys["ArrowRight"] && player.x < canvas.width - player.w) player.x += player.speed; 
         } 
 
         function draw() { 
-            ctx.clearRect(0, 0, canvas.width, canvas.height); drawBackground();
-            coins.forEach(c => c.draw()); obstacles.forEach(o => o.draw());
-            ctx.drawImage(imgJogador, player.x, player.y - (player.h / 2), player.w, player.h);
-
-            // Placar
-            ctx.fillStyle = "black"; ctx.font = "bold 18px Arial"; ctx.textAlign = "left"; 
-            ctx.fillText(`🪙 Moedas: ${score}`, 10, 30);
-            let timeElapsed = Math.floor(((gameOver ? startTime + frames * 16.6 : Date.now()) - startTime) / 1000);
-            let min = Math.floor(timeElapsed / 60).toString().padStart(2, '0'), sec = (timeElapsed % 60).toString().padStart(2, '0');
-            ctx.textAlign = "right"; ctx.font = "14px Arial";
-            ctx.fillText(`⏱️ Tempo: ${min}:${sec}`, canvas.width - 10, 20);
-            ctx.fillText(`🏁 Distância: ${(distance / 1000).toFixed(2)} km`, canvas.width - 10, 40);
-            ctx.fillStyle = "#d00"; ctx.fillText(`🏆 Recorde: ${(recordDistance / 1000).toFixed(2)} km`, canvas.width - 10, 60);
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
             
-            if (gameOver) { 
-                ctx.fillStyle = "rgba(0, 0, 0, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
-                ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.font = "bold 40px Arial"; ctx.fillText("GAME OVER", canvas.width / 2, 180); 
-                ctx.font = "20px Arial"; ctx.fillText("Toque para reiniciar", canvas.width / 2, 230); 
+            if (gameState === "menu") {
+                drawMenu();
+            } else {
+                drawBackground();
+                coins.forEach(c => c.draw()); obstacles.forEach(o => o.draw());
+                ctx.drawImage(imgJogador, player.x, player.y - (player.h / 2), player.w, player.h);
+
+                // HUD Jogando
+                ctx.fillStyle = "black"; ctx.font = "bold 18px Arial"; ctx.textAlign = "left"; 
+                ctx.fillText(`🪙 Sessão: ${score}`, 10, 30);
+                ctx.textAlign = "right"; ctx.font = "14px Arial";
+                ctx.fillText(`🏁 ${(distance / 1000).toFixed(2)} km`, canvas.width - 10, 30);
+                
+                if (gameOver) { 
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+                    ctx.fillStyle = "white"; ctx.textAlign = "center"; 
+                    ctx.font = "bold 40px Arial"; ctx.fillText("GAME OVER", canvas.width / 2, 180); 
+                    ctx.font = "20px Arial"; ctx.fillText("Toque para reiniciar", canvas.width / 2, 230); 
+                }
             }
         } 
         function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); } 
